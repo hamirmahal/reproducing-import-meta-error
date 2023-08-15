@@ -1,12 +1,15 @@
 name: Run npm start
 
-on:
-  pull_request:
-    types:
-      - opened
-  push:
-    branches:
-      - '*'
+# This will supposedly provide more detailed debug information in the workflow execution logs.
+env:
+  ACTIONS_STEP_DEBUG: true
+
+# https://stackoverflow.com/questions/68737385/how-to-trigger-github-actions-on-push-of-current-branch/68737519#68737519
+on: [push]
+
+# https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs#overview
+permissions:
+  pull-requests: write
 
 jobs:
   build:
@@ -24,7 +27,53 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run npm start
-        run: npm start
+      - name: Run npm start and write terminal output to `npmStartOutput.txt`.
+        # https://stackoverflow.com/questions/57915432/write-output-of-npm-run-start-to-a-file/57920886#57920886
+        run: npm start 2>&1| tee npmStartOutput.txt
         continue-on-error: true
         id: npm-start
+
+      - name: List files in the current directory
+        run: ls -a
+
+      - name: Print working directory
+        run: pwd
+
+      - name: Print the output of the previous step
+        run: echo "${{ steps.npm-start.outputs.stdout }}"
+
+      - name: Upload npmStartOutput.txt as an artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: npmStartOutput
+          path: npmStartOutput.txt
+
+  comment:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download npmStartOutput artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: npmStartOutput
+          path: output
+
+      - name: Create comment with npm start output
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('output/npmStartOutput.txt', 'utf8');
+            const commentBody = `**\`npm start\` output**:\n\`\`\`\n${output}\n\`\`\``;
+
+            // https://stackoverflow.com/questions/58066966/commenting-a-pull-request-in-a-github-action/76215842#76215842
+            github.rest.issues.createComment({
+              issue_number: (await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                commit_sha: context.sha,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              })).data[0].number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            })
