@@ -9,7 +9,7 @@ on: [push]
 
 # https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs#overview
 permissions:
-  pull-requests: write
+  contents: write
 
 jobs:
   build:
@@ -66,13 +66,8 @@ jobs:
             const output = fs.readFileSync('output/npmStartOutput.txt', 'utf8');
             const commentBody = `**\`npm start\` output**:\n\`\`\`\n${output}\n\`\`\``;
 
-            // https://stackoverflow.com/questions/58066966/commenting-a-pull-request-in-a-github-action/76215842#76215842
-            github.rest.issues.createComment({
-              issue_number: (await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                commit_sha: context.sha,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-              })).data[0].number,
+            github.rest.repos.createCommitComment({
+              commit_sha: context.sha,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: commentBody
